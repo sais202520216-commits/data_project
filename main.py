@@ -1,13 +1,6 @@
 import streamlit as st
 import pandas as pd
 import seaborn as sns
-import matplotlib.pyplot as plt
-
-st.set_page_config(page_title="운동 데이터 분석 웹페이지", layout="wide")
-
-st.title("🏋️ 운동 데이터 분석 웹페이지")
-st.write("체지방률과 다른 속성들 간의 상관관계를 분석하고, 산점도 & 히트맵을 제공합니다.")
-
 # ---------------------------
 # 1. 데이터 불러오기
 # ---------------------------
