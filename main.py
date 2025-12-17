@@ -19,7 +19,7 @@ st.title("🚲 자전거 사고 다발지역 분석")
 # ---------------------------------
 @st.cache_data
 def load_data():
-    df = pd.read_csv("data/bike_accident.csv", encoding="cp949")
+    df = pd.read_csv("한국도로교통공단_자전거사고 다발지역 개별사고 정보_20201231.csv", encoding="cp949")
     return df
 
 df = load_data()
