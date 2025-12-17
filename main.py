@@ -1,69 +1,83 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+# ---------------------------------
+# 1. 스트림릿 기본 설정
+# ---------------------------------
 st.set_page_config(
-    page_title="자전거 사고 다발지역 분석",
+    page_title="자전거 사고 데이터 분석",
     layout="wide"
 )
 
-st.title("🚲 자전거 사고 다발지역 데이터 분석")
-st.write("CSV 파일을 업로드하면 자동으로 분석합니다.")
+st.title("🚲 자전거 사고 다발지역 분석")
 
-# CSV 파일 업로드
-uploaded_file = st.file_uploader(
-    "자전거 사고 CSV 파일 업로드",
-    type=["csv"]
-)
+# ---------------------------------
+# 2. 데이터 불러오기
+# ---------------------------------
+@st.cache_data
+def load_data():
+    df = pd.read_csv("data/bike_accident.csv", encoding="cp949")
+    return df
 
-if uploaded_file is not None:
-    # 데이터 불러오기
-    df = pd.read_csv(uploaded_file, encoding="utf-8")
+df = load_data()
 
-    st.subheader("📄 데이터 미리보기")
-    st.dataframe(df.head())
+st.subheader("📌 원본 데이터")
+st.dataframe(df.head())
 
-    # 결측치 확인
-    st.subheader("❗ 결측치 개수")
-    st.write(df.isnull().sum())
+# ---------------------------------
+# 3. 문자 → 숫자로 변환
+# ---------------------------------
+st.subheader("🔢 문자 데이터 숫자로 변환")
 
-    # 숫자형 컬럼만 선택
-    numeric_df = df.select_dtypes(include="number")
+df_numeric = df.copy()
 
-    st.subheader("📊 숫자형 데이터 기초 통계")
-    st.dataframe(numeric_df.describe())
+for col in df_numeric.columns:
+    # 데이터 타입이 문자(object)이면
+    if df_numeric[col].dtype == "object":
+        # 문자 → 숫자 코드로 변환
+        df_numeric[col], _ = pd.factorize(df_numeric[col])
 
-    # 상관관계 히트맵
-    if numeric_df.shape[1] >= 2:
-        st.subheader("🔍 상관관계 히트맵")
+st.write("✔ 문자형 컬럼을 모두 숫자로 변환 완료")
+st.dataframe(df_numeric.head())
 
-        corr = numeric_df.corr()
+# ---------------------------------
+# 4. IQR 이상치 제거 함수
+# ---------------------------------
+st.subheader("📉 이상치(IQR) 처리")
 
-        fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(
-            corr,
-            annot=True,
-            fmt=".2f",
-            cmap="coolwarm",
-            ax=ax
-        )
-        st.pyplot(fig)
+def remove_outliers_iqr(data, column):
+    Q1 = data[column].quantile(0.25)
+    Q3 = data[column].quantile(0.75)
+    IQR = Q3 - Q1
 
-        # 산점도
-        st.subheader("📈 변수 간 산점도")
-        x_col = st.selectbox("X축 변수", numeric_df.columns)
-        y_col = st.selectbox("Y축 변수", numeric_df.columns)
+    lower = Q1 - 1.5 * IQR
+    upper = Q3 + 1.5 * IQR
 
-        fig2, ax2 = plt.subplots()
-        ax2.scatter(numeric_df[x_col], numeric_df[y_col])
-        ax2.set_xlabel(x_col)
-        ax2.set_ylabel(y_col)
-        ax2.set_title(f"{x_col} vs {y_col}")
-        st.pyplot(fig2)
+    return data[(data[column] >= lower) & (data[column] <= upper)]
 
-    else:
-        st.warning("숫자형 컬럼이 부족하여 상관관계 분석을 할 수 없습니다.")
+# 숫자 컬럼 선택
+num_columns = df_numeric.select_dtypes(include=np.number).columns
+selected_col = st.selectbox("이상치 제거할 컬럼 선택", num_columns)
 
-else:
-    st.info("CSV 파일을 업로드해 주세요.")
+df_clean = remove_outliers_iqr(df_numeric, selected_col)
+
+st.write(f"이상치 제거 전 데이터 수: {len(df_numeric)}")
+st.write(f"이상치 제거 후 데이터 수: {len(df_clean)}")
+
+# ---------------------------------
+# 5. 시각화 (이상치 비교)
+# ---------------------------------
+st.subheader("📊 이상치 제거 전/후 비교")
+
+fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+
+sns.boxplot(y=df_numeric[selected_col], ax=ax[0])
+ax[0].set_title("이상치 제거 전")
+
+sns.boxplot(y=df_clean[selected_col], ax=ax[1])
+ax[1].set_title("이상치 제거 후")
+
+st.pyplot(fig)
