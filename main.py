@@ -62,3 +62,30 @@ corr_value = df_analysis[['시간대', '사고심각도']].corr().iloc[0, 1]
 
 st.write(f"**시간대와 사고 심각도 간의 상관계수:** `{corr_value:.4f}`")
 st.write("> 상관계수가 0에 가깝다면 시간대와 사고의 '심각도' 자체는 직접적인 선형 관계가 낮음을 의미합니다. 하지만 '빈도'와는 밀접한 관계가 있을 수 있습니다.")
+
+# ---------------------------------
+# [추가] 결측치 확인 및 처리
+# ---------------------------------
+st.subheader("🔍 결측치 확인 및 처리")
+
+# 1. 결측치 현황 파악
+null_counts = df.isnull().sum()
+if null_counts.sum() > 0:
+    st.warning("데이터에 결측치가 존재합니다.")
+    st.dataframe(null_counts[null_counts > 0].reset_index().rename(columns={0: '결측치 수', 'index': '컬럼명'}))
+    
+    # 2. 결측치 처리 방법 선택
+    method = st.radio("결측치 처리 방법 선택", ["제거(Drop)", "최빈값으로 채우기(Fill with Mode)"])
+    
+    if method == "제거(Drop)":
+        df = df.dropna()
+        st.success("결측치가 포함된 행을 모두 제거했습니다.")
+    else:
+        # 문자열 데이터가 많으므로 최빈값(Mode)으로 채우는 것이 일반적입니다.
+        for col in df.columns:
+            df[col] = df[col].fillna(df[col].mode()[0])
+        st.success("모든 결측치를 해당 컬럼의 최빈값으로 채웠습니다.")
+else:
+    st.success("데이터에 결측치가 없습니다! ✅")
+
+st.write(f"현재 남은 데이터 수: {len(df)}")
