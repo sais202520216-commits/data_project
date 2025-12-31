@@ -1,117 +1,64 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import seaborn as sns
-import platform
+import matplotlib.pyplot as plt
 
-# ---------------------------------
-# 1. 스트림릿 기본 설정
-# ---------------------------------
-st.set_page_config(
-    page_title="교통수단 사고율과 시간대의 상관관계",
-    layout="wide"
-)
-
-# --- [추가] 한글 폰트 설정 ---
-def set_korean_font():
-    if platform.system() == 'Darwin': # 맥
-        plt.rc('font', family='AppleGothic')
-    elif platform.system() == 'Windows': # 윈도우
-        plt.rc('font', family='Malgun Gothic')
-    else: # 리눅스 (코랩/도커 등)
-        plt.rc('font', family='NanumGothic')
-    plt.rcParams['axes.unicode_minus'] = False # 마이너스 기호 깨짐 방지
-
-set_korean_font()
-
-st.title("교통수단 사고율과 시간대의 상관관계")
-
-# ---------------------------------
-# 2. 데이터 불러오기
-# ---------------------------------
+# 1. 데이터 로드 및 전처리
 @st.cache_data
-def load_data():
-    # 파일 경로를 실제 환경에 맞게 확인해주세요.
-    # 예시: "한국도로교통공단_자전거사고 다발지역 개별사고 정보_20201231.csv"
-    try:
-        df = pd.read_csv("한국도로교통공단_자전거사고 다발지역 개별사고 정보_20201231.csv", encoding="cp949")
-        return df
-    except:
-        # 파일이 없을 경우 테스트용 더미 데이터 생성 (작동 확인용)
-        data = {
-            '사고번호': range(100),
-            '다발지구분': np.random.choice(['A', 'B'], 100),
-            '사고내용': np.random.choice(['경상', '중상'], 100),
-            '가해운전자_연령': np.random.randint(10, 80, 100)
-        }
-        return pd.DataFrame(data)
-
-df = load_data()
-
-st.subheader("📌 원본 데이터")
-st.dataframe(df.head())
-
-# ---------------------------------
-# 3. 문자 → 숫자로 변환
-# ---------------------------------
-st.subheader("🔢 문자 데이터 숫자로 변환")
-
-df_numeric = df.copy()
-# 변환할 때 원본의 의미를 잃지 않도록 숫자형이 아닌 것만 골라 변환
-object_cols = df_numeric.select_dtypes(include=['object']).columns
-
-for col in object_cols:
-    df_numeric[col], _ = pd.factorize(df_numeric[col])
-
-st.write(f"✔ 변환된 컬럼: {', '.join(object_cols)}")
-st.dataframe(df_numeric.head())
-
-# ---------------------------------
-# 4. IQR 이상치 제거 함수
-# ---------------------------------
-st.subheader("📉 이상치(IQR) 처리")
-
-def remove_outliers_iqr(data, column):
-    Q1 = data[column].quantile(0.25)
-    Q3 = data[column].quantile(0.75)
-    IQR = Q3 - Q1
-
-    lower = Q1 - 1.5 * IQR
-    upper = Q3 + 1.5 * IQR
+def load_analysis_data():
+    # 데이터 불러오기 (환경에 맞게 경로 수정)
+    df = pd.read_csv("한국도로교통공단_자전거사고 다발지역 개별사고 정보_20201231.csv", encoding="cp949")
     
-    # 필터링
-    cleaned_data = data[(data[column] >= lower) & (data[column] <= upper)]
-    return cleaned_data, lower, upper
+    # '사고일시'에서 시간 정보만 추출 (예: 2020051514 -> 14시)
+    # 데이터 형식에 따라 추출 방식이 다를 수 있으니 확인이 필요합니다.
+    df['시간대'] = df['사고일시'].astype(str).str[-4:-2].astype(int)
+    
+    # 사고 심각도 점수화 (상관관계 분석용)
+    # 사망: 4, 중상: 3, 경상: 2, 부상신고: 1 등으로 수치화
+    severity_map = {'사망': 4, '중상': 3, '경상': 2, '부상신고': 1}
+    df['사고심각도'] = df['사고내용'].map(severity_map).fillna(0)
+    
+    return df
 
-# 숫자 컬럼 선택 (변수명이 명확한 컬럼 권장, 예: 연령 등)
-num_columns = df_numeric.columns
-selected_col = st.selectbox("이상치 제거할 컬럼 선택 (데이터 분포가 넓은 컬럼을 선택해보세요)", num_columns)
+df_analysis = load_analysis_data()
 
-df_clean, low, up = remove_outliers_iqr(df_numeric, selected_col)
+st.header("⏰ 시간대별 사고 상관관계 분석")
 
-col1, col2 = st.columns(2)
-col1.metric("이상치 제거 전 데이터", len(df_numeric))
-col2.metric("이상치 제거 후 데이터", len(df_clean), f"{len(df_clean) - len(df_numeric)}")
+# ---------------------------------------------------------
+# 2. 시간대별 사고 건수 시각화
+# ---------------------------------------------------------
+st.subheader("1. 시간대별 사고 발생 빈도")
+fig1, ax1 = plt.subplots(figsize=(12, 5))
+sns.countplot(data=df_analysis, x='시간대', palette='viridis', ax=ax1)
+ax1.set_title("시간대별 사고 발생 건수", fontsize=15)
+ax1.set_xlabel("시간 (0-23시)")
+ax1.set_ylabel("사고 건수")
+st.pyplot(fig1)
 
-# ---------------------------------
-# 5. 시각화 (이상치 비교)
-# ---------------------------------
-st.subheader("📊 이상치 제거 전/후 비교")
+st.info("💡 보통 출퇴근 시간대(08-09시, 17-19시)에 사고 발생 빈도가 가장 높게 나타납니다.")
 
-# # 박스플롯이 왜 이상하게 나오는지 이해를 돕기 위한 구조 설명입니다.
-# 데이터가 너무 뭉쳐있으면 상자만 보일 수 있습니다.
+# ---------------------------------------------------------
+# 3. 시간대 vs 사고 심각도 상관관계 (Heatmap)
+# ---------------------------------------------------------
+st.subheader("2. 시간대와 사고 내용의 상관관계 (Heatmap)")
 
-fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+# 시간대와 사고내용으로 피벗 테이블 생성
+pivot_df = df_analysis.groupby(['시간대', '사고내용']).size().unstack(fill_value=0)
 
-# 제거 전
-sns.boxplot(y=df_numeric[selected_col], ax=ax[0], color='skyblue')
-ax[0].set_title(f"제거 전: {selected_col}")
+# 비율로 변환 (각 시간대별로 어떤 사고가 많이 발생하는지)
+pivot_norm = pivot_df.div(pivot_df.sum(axis=1), axis=0)
 
-# 제거 후
-sns.boxplot(y=df_clean[selected_col], ax=ax[1], color='lightgreen')
-ax[1].set_title(f"제거 후: {selected_col}")
+fig2, ax2 = plt.subplots(figsize=(12, 6))
+sns.heatmap(pivot_norm.T, annot=True, fmt=".2f", cmap="YlGnBu", ax=ax2)
+ax2.set_title("시간대별 사고 내용 분포 (비율)", fontsize=15)
+st.pyplot(fig2)
 
-# 레이아웃 조정
-plt.tight_layout()
-st.pyplot(fig)
+# ---------------------------------------------------------
+# 4. 수치적 상관계수 확인
+# ---------------------------------------------------------
+st.subheader("3. 통계적 상관계수 (Correlation)")
+# 시간과 사고심각도(수치) 간의 피어슨 상관계수 계산
+corr_value = df_analysis[['시간대', '사고심각도']].corr().iloc[0, 1]
+
+st.write(f"**시간대와 사고 심각도 간의 상관계수:** `{corr_value:.4f}`")
+st.write("> 상관계수가 0에 가깝다면 시간대와 사고의 '심각도' 자체는 직접적인 선형 관계가 낮음을 의미합니다. 하지만 '빈도'와는 밀접한 관계가 있을 수 있습니다.")
